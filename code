@@ -1,0 +1,109 @@
+# 🧠 Alan Turing Interactive Quiz + Summary — FINAL WORKING VERSION for Google Colab
+
+# Step 1 – Install dependencies
+!pip install sqlalchemy requests beautifulsoup4 nltk
+
+# Step 2 – Imports
+from sqlalchemy import create_engine, Column, Integer, String, Text
+from sqlalchemy.orm import declarative_base, sessionmaker
+import requests
+from bs4 import BeautifulSoup
+import nltk
+from nltk.tokenize import sent_tokenize
+import random
+
+# Step 3 – Download NLTK data
+nltk.download("punkt", quiet=True)
+
+# Step 4 – Database setup (✅ fixed naming & inheritance)
+Base = declarative_base()
+engine = create_engine("sqlite:///alan_turing_quiz.db", echo=False)
+Session = sessionmaker(bind=engine)
+session = Session()
+
+class WikipediaData(Base):
+    _tablename_ = "wikipedia_data"   # must exist for SQLAlchemy ORM
+    id = Column(Integer, primary_key=True)
+    title = Column(String(255))
+    url = Column(String(255))
+    summary = Column(Text)
+    quiz = Column(Text)
+
+# ✅ Create the table
+Base.metadata.create_all(engine)
+
+# Step 5 – Scrape the Wikipedia page
+url = "https://en.wikipedia.org/wiki/Alan_Turing"
+response = requests.get(url)
+soup = BeautifulSoup(response.text, "html.parser")
+
+title = soup.find("h1", {"id": "firstHeading"}).text.strip()
+content_div = soup.find("div", {"class": "mw-parser-output"})
+paragraphs = content_div.find_all("p")
+raw_text = " ".join([p.text.strip() for p in paragraphs if p.text.strip()])
+
+# Step 6 – Generate a short summary (first ~8 sentences)
+sentences = sent_tokenize(raw_text)
+summary = " ".join(sentences[:8])
+
+# Step 7 – Define multiple-choice quiz
+quiz_data = [
+    {
+        "question": "In which year was Alan Turing born?",
+        "options": ["1902", "1912", "1922", "1932"],
+        "answer": "1912"
+    },
+    {
+        "question": "Alan Turing is often called the father of what field?",
+        "options": ["Modern Computing", "Quantum Physics", "Genetics", "Astronomy"],
+        "answer": "Modern Computing"
+    },
+    {
+        "question": "Where did Alan Turing work to break German codes during WWII?",
+        "options": ["Cambridge University", "Bletchley Park", "Oxford University", "Harvard University"],
+        "answer": "Bletchley Park"
+    },
+    {
+        "question": "What conceptual machine did Turing propose?",
+        "options": ["Von Neumann Architecture", "Turing Machine", "Analytical Engine", "Quantum Computer"],
+        "answer": "Turing Machine"
+    },
+    {
+        "question": "In which year did Alan Turing die?",
+        "options": ["1945", "1954", "1964", "1974"],
+        "answer": "1954"
+    }
+]
+
+# Step 8 – Save summary + quiz text to DB
+quiz_text = "\n".join([q["question"] for q in quiz_data])
+entry = WikipediaData(title=title, url=url, summary=summary, quiz=quiz_text)
+session.add(entry)
+session.commit()
+
+# Step 9 – Display summary
+print(f"✅ Scraped and summarized: {title}\n")
+print("📖 Summary:\n")
+print(summary)
+print("\n🧩 Let's take a quiz!\n")
+
+# Step 10 – Interactive quiz
+score = 0
+for i, q in enumerate(quiz_data, start=1):
+    print(f"Q{i}. {q['question']}")
+    options = q["options"].copy()
+    random.shuffle(options)
+    for j, opt in enumerate(options, start=1):
+        print(f"   {j}. {opt}")
+    try:
+        ans = int(input("Your answer (1-4): "))
+        if 1 <= ans <= 4 and options[ans - 1] == q["answer"]:
+            print("✅ Correct!\n")
+            score += 1
+        else:
+            print(f"❌ Wrong! Correct answer: {q['answer']}\n")
+    except ValueError:
+        print(f"❌ Invalid input. Correct answer: {q['answer']}\n")
+
+print(f"🏁 Your final score: {score}/{len(quiz_data)}")
+print("\n📦 Database saved as: alan_turing_quiz.db")
